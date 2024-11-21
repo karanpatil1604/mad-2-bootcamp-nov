@@ -39,28 +39,50 @@ class HelloWorld(Resource):
         return "delete request handled"
 
 
+from flask_restful import reqparse, fields, marshal, marshal_with
+
+res_fields = {"id": fields.Integer, "name": fields.String, "isActive": fields.Boolean}
+
+
 class CategoryList(Resource):
     def get(self):
-        categories = Category.query.all()
-        res = [
-            {"id": cat.id, "name": cat.name, "isActive": cat.isActive}
-            for cat in categories
-        ]
-        # for cat in categories:
-        #     next_cat = {"id": cat.id, "name": cat.name, "isActive": cat.isActive}
-        #     res.append(next_cat)
-        return res
+        page = request.args.get("page", 1)
+        per_page = request.args.get("per_page", 2)
+        if page:
+            categories = Category.query.paginate(page=int(page), per_page=int(per_page))
+            items = [
+                {"id": cat.id, "name": cat.name, "isActive": cat.isActive}
+                for cat in categories.items
+            ]
+            return {
+                "items": items,
+                "page": categories.page,
+                "per_page": categories.per_page,
+                "total": categories.total,
+                "pages": categories.pages,
+            }
+        else:
+            categories = Category.query.all()
+            res = [
+                {"id": cat.id, "name": cat.name, "isActive": cat.isActive}
+                for cat in categories
+            ]
+
+            # for cat in categories:
+            #     next_cat = {"id": cat.id, "name": cat.name, "isActive": cat.isActive}
+            #     res.append(next_cat)
+            return res
 
     def post(self):
         data = request.get_json()
         print(data)
         print(type(data))
         cat_name = data.get("name")
-        new_category = Category(name=cat_name)
+        new_category = Category(name=cat_name, isActive=1)
         db.session.add(new_category)
         db.session.commit()
         return {
-            "message": "Recieved the data correctly",
+            "message": "Category created successfully",
             "id": new_category.id,
             "name": new_category.name,
             "isActive": new_category.isActive,
@@ -70,6 +92,8 @@ class CategoryList(Resource):
 class CategoryDetail(Resource):
     def get(self, id):
         category = Category.query.get(id)
+        if not category:
+            return {"message": "Category does not exist"}, 404
         return {
             "message": "Category details",
             "id": category.id,
@@ -115,6 +139,17 @@ class CategoryDetail(Resource):
 api.add_resource(HelloWorld, "/")
 api.add_resource(CategoryList, "/categories")
 api.add_resource(CategoryDetail, "/categories/<id>")
+
+
+@app.route("/search")
+def search():
+    query = request.args.get("q", "")
+    query = f"%{query}%"
+    if query:
+        categories = Category.query.filter(Category.name.ilike(query)).all()
+
+    return marshal(categories, res_fields)
+
 
 # BASE_URL = http://localhot:5000
 

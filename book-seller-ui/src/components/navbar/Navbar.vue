@@ -1,12 +1,29 @@
 <script setup>
 import { RouterLink } from 'vue-router'
+import { ref } from 'vue'
 import NavItem from './NavItem.vue'
+
+import { useRouter, useRoute } from 'vue-router'
+
+const router = useRouter()
+const route = useRoute()
+const q = ref('')
+
+const emit = defineEmits(['inputValue', 'atSearch'])
+
+let l = [1, 2, 4]
+console.log(...l)
+
+const handleSearch = () => {
+  const query = { ...route.query, q: q.value }
+  router.push({ query })
+}
 </script>
 
 <template>
   <nav class="navbar navbar-expand-lg bg-body-tertiary">
     <div class="container-fluid">
-      <RouterLink to="/">
+      <RouterLink class="text-decoration-none" to="/">
         <div class="navbar-brand">Bookstore</div>
       </RouterLink>
       <button
@@ -35,26 +52,31 @@ import NavItem from './NavItem.vue'
               data-bs-toggle="dropdown"
               aria-expanded="false"
             >
-              Dropdown
+              Acccount
             </a>
             <ul class="dropdown-menu">
-              <RouterLink to="/login">
+              <RouterLink class="text-decoration-none" to="/login">
                 <li class="dropdown-item">Login</li>
               </RouterLink>
-              <RouterLink to="/register">
+              <RouterLink class="text-decoration-none" to="/register">
                 <li class="dropdown-item">Register</li>
               </RouterLink>
               <li><hr class="dropdown-divider" /></li>
               <li><a class="dropdown-item" href="#">Logout</a></li>
             </ul>
           </li>
-          <li class="nav-item">
-            <a class="nav-link disabled" aria-disabled="true">Disabled</a>
-          </li>
         </ul>
         <form class="d-flex" role="search">
-          <input class="form-control me-2" type="search" placeholder="Search" aria-label="Search" />
-          <button class="btn btn-outline-success" type="submit">Search</button>
+          <input
+            class="form-control me-2"
+            type="search"
+            v-model="q"
+            placeholder="Search"
+            aria-label="Search"
+          />
+          <button class="btn btn-outline-success" @click="handleSearch" type="button">
+            Search
+          </button>
         </form>
       </div>
     </div>
