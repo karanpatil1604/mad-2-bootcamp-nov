@@ -1,8 +1,14 @@
-from flask import Flask, request
+from flask import Flask, request, jsonify
 from flask_restful import Resource, Api
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm.exc import UnmappedInstanceError
 from flask_cors import CORS
+
+from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
+import jwt
+
 
 db = SQLAlchemy()
 
@@ -13,6 +19,17 @@ class Category(db.Model):
     isActive = db.Column(db.Integer, default=0)
 
 
+class User(db.Model):
+    __tablename__ = "users"
+    id = db.Column(db.Integer, autoincrement=True, primary_key=True)
+    email = db.Column(db.String, unique=True, nullable=False)
+    first_name = db.Column(db.String, nullable=False)
+    last_name = db.Column(db.String, nullable=True)
+    password = db.Column(db.String, nullable=False)
+    role = db.Column(db.String, default="customer", nullable=False)
+    profile_img = db.Column(db.String, nullable=True)
+
+
 app = Flask(__name__)
 api = Api(app)
 
@@ -21,6 +38,7 @@ CORS(
 )
 
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///project.db"
+app.config["SECRET_KEY"] = "my_secret_key"
 
 db.init_app(app)
 
@@ -149,6 +167,60 @@ def search():
         categories = Category.query.filter(Category.name.ilike(query)).all()
 
     return marshal(categories, res_fields)
+
+
+@app.post("/login")
+def login():
+    email = request.json.get("email")
+    password = request.json.get("password")
+    user = User.query.filter_by(email=email).first()
+    if user:
+        if check_password_hash(user.password, password):
+            token = jwt.encode(
+                {
+                    "user_id": user.id,
+                    "email": user.email,
+                    "role": user.role,
+                },
+                app.config["SECRET_KEY"],
+            )
+            return jsonify({"token": token}), 200
+        else:
+            # WRONG PASSWORD
+            return jsonify({"msg": "Incorrect Username or Email!"}), 400
+
+    return jsonify({"msg": "Incorrect Username or Email!"}), 404
+
+
+@app.post("/register")
+def register():
+    credentials = request.get_json()
+    try:
+        new_user = User(
+            first_name=credentials.get("fname", ""),
+            last_name=credentials["lname"],
+            email=credentials["email"],
+            role=credentials["role"],
+            password=generate_password_hash(credentials["password"]),
+        )
+        db.session.add(new_user)
+        db.session.commit()
+        # event generated (A task defined by the developer)
+        # send_mail_task()
+    except IntegrityError:
+        return (
+            jsonify(
+                {
+                    "msg": "Integrity Error",
+                    "details": {
+                        "field": "email",
+                        "error": "User with this email or username already exist",
+                    },
+                }
+            ),
+            409,
+        )
+    return {"msg": "CREATED NEW USER", "new_user_id": new_user.id}
 
 
 # BASE_URL = http://localhot:5000
