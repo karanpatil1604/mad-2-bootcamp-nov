@@ -3,31 +3,18 @@ from flask_restful import Resource, Api
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm.exc import UnmappedInstanceError
 from flask_cors import CORS
+from flask_caching import Cache
 
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 import jwt
 
-
-db = SQLAlchemy()
-
-
-class Category(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String, nullable=False)
-    isActive = db.Column(db.Integer, default=0)
+from models import db, User, Category
 
 
-class User(db.Model):
-    __tablename__ = "users"
-    id = db.Column(db.Integer, autoincrement=True, primary_key=True)
-    email = db.Column(db.String, unique=True, nullable=False)
-    first_name = db.Column(db.String, nullable=False)
-    last_name = db.Column(db.String, nullable=True)
-    password = db.Column(db.String, nullable=False)
-    role = db.Column(db.String, default="customer", nullable=False)
-    profile_img = db.Column(db.String, nullable=True)
+import workers
+import tasks
 
 
 app = Flask(__name__)
@@ -39,8 +26,32 @@ CORS(
 
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///project.db"
 app.config["SECRET_KEY"] = "my_secret_key"
+app.config["CELERY_BROKER_URL"] = "redis://localhost:6379/1"
+app.config["CELERY_RESULT_BACKEND"] = "redis://localhost:6379/2"
+app.config["CACHE_TYPE"] = "RedisCache"
+app.config["CACHE_REDIS_DB"] = "0"
+app.config["CACHE_REDIS_URL"] = "redis://localhost:6379/0"
+# app.config["CACHE_REDIS_HOST"] = "redis://localhost"
+# app.config["CACHE_REDIS_PORT"] = "6379"
+# app.config["CACHE_DEFAULT_TIMEOUT"] = 300
 
 db.init_app(app)
+
+celery = workers.celery
+cache = Cache(app)
+
+celery.conf.update(
+    broker_url=app.config["CELERY_BROKER_URL"],
+    result_backend=app.config["CELERY_RESULT_BACKEND"],
+)
+celery.conf.update(
+    result_expires=3600,
+    task_soft_time_limit=300,
+    task_time_limit=600,
+)
+
+celery.Task = workers.ContextTask
+app.app_context().push()
 
 
 class HelloWorld(Resource):
@@ -63,6 +74,7 @@ res_fields = {"id": fields.Integer, "name": fields.String, "isActive": fields.Bo
 
 
 class CategoryList(Resource):
+    @cache.cached(timeout=60)
     def get(self):
         page = request.args.get("page", 1)
         per_page = request.args.get("per_page", 2)
@@ -221,6 +233,15 @@ def register():
             409,
         )
     return {"msg": "CREATED NEW USER", "new_user_id": new_user.id}
+
+
+@app.route("/hello/<name>")
+def hello_job(name):
+    if not name:
+        name = "Karan"
+    job = tasks.just_say_hello.delay(name)
+
+    return str(job), 200
 
 
 # BASE_URL = http://localhot:5000
